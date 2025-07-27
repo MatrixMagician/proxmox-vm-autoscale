@@ -12,12 +12,12 @@ from typing import Optional, Dict, Any, List
 from contextlib import contextmanager
 import json
 
-from secure_config_loader import SecureConfigLoader, ConfigurationError
+from config_loader import SecureConfigLoader, ConfigurationError
 from config_models import VMAutoscaleConfig, ProxmoxHost, VirtualMachine
-from secure_ssh_client import SecureSSHClient, SecurityException
+from ssh_client import SecureSSHClient, SecurityException
 from vm_manager import VMResourceManager
 from host_resource_checker import HostResourceChecker
-from secure_notification_manager import SecureNotificationManager
+from notification_manager import SecureNotificationManager
 
 
 class VMAutoscaler:

@@ -1,7 +1,7 @@
 import logging
 import json
 from typing import Tuple
-from secure_ssh_client import SecureSSHClient
+from ssh_client import SecureSSHClient
 
 class HostResourceChecker:
     """

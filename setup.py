@@ -132,12 +132,12 @@ def copy_files(install_dir):
     
     # Files to copy
     files_to_copy = [
-        "autoscale_secure.py",
-        "secure_ssh_client.py",
+        "autoscale.py",
+        "ssh_client.py",
         "vm_manager.py",
         "host_resource_checker.py",
-        "secure_notification_manager.py",
-        "secure_config_loader.py",
+        "notification_manager.py",
+        "config_loader.py",
         "config_models.py",
         "requirements.txt"
     ]
@@ -204,7 +204,7 @@ Wants=network-online.target
 Type=simple
 User=vm-autoscale
 Group=vm-autoscale
-ExecStart={install_dir}/venv/bin/python {install_dir}/autoscale_secure.py --config /etc/vm-autoscale/config.yaml --env-file /etc/vm-autoscale/.env
+ExecStart={install_dir}/venv/bin/python {install_dir}/autoscale.py --config /etc/vm-autoscale/config.yaml --env-file /etc/vm-autoscale/.env
 Restart=always
 RestartSec=30
 StandardOutput=journal
@@ -327,8 +327,8 @@ def main():
         print("1. Edit /etc/vm-autoscale/config.yaml with your Proxmox hosts and VMs")
         print("2. Edit /etc/vm-autoscale/.env with your credentials")
         print("3. Add Proxmox host keys to /var/lib/vm-autoscale/.ssh/known_hosts")
-        print("4. Test configuration: sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py --config /etc/vm-autoscale/config.yaml --env-file /etc/vm-autoscale/.env --validate-only")
-        print("5. Enable and start service: systemctl enable vm-autoscale-secure.service && systemctl start vm-autoscale-secure.service")
+        print("4. Test configuration: sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale.py --config /etc/vm-autoscale/config.yaml --env-file /etc/vm-autoscale/.env --validate-only")
+        print("5. Enable and start service: systemctl enable vm_autoscale.service && systemctl start vm_autoscale.service")
         print()
         print("Security notes:")
         print("- Configuration files have restrictive permissions")

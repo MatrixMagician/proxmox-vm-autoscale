@@ -3,7 +3,7 @@ import re
 import time
 import threading
 from typing import Tuple, Optional
-from secure_ssh_client import SecureSSHClient, SecurityException
+from ssh_client import SecureSSHClient, SecurityException
 
 
 class VMResourceManager:
