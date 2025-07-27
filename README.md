@@ -6,9 +6,7 @@ This project was originally created by Fabrizio Salmi
 
 The service supports multiple Proxmox hosts via SSH connections and can be easily installed and managed as a **systemd** service for seamless automation.
 
-> [!IMPORTANT]
-> **🔒 SECURITY-ENHANCED VERSION AVAILABLE**
-> 
+> [!IMPORTANT] 
 > This repository now includes a **completely refactored, security-enhanced version** that addresses critical vulnerabilities and follows modern Python design principles. See the [Security Features](#-security-features) section below.
 
 > [!IMPORTANT]
@@ -30,9 +28,6 @@ The service supports multiple Proxmox hosts via SSH connections and can be easil
 ---
 
 ## 🛡️ Security Features
-
-### 🚨 **Critical Security Fixes**
-This refactored version addresses **multiple critical security vulnerabilities** found in the original codebase:
 
 #### ✅ **Command Injection Protection**
 - **Before**: `f"qm status {vm_id}"` - vulnerable to injection attacks
@@ -69,20 +64,20 @@ This refactored version addresses **multiple critical security vulnerabilities**
 
 ## 🚀 Quick Start
 
-### **🔒 Secure Installation (Recommended)**
+### **🔒 Installation**
 
-For the security-enhanced version with automated setup:
+Using the automated setup:
 
 ```bash
 # Clone the repository
 git clone https://github.com/MatrixMagician/proxmox-vm-autoscale.git
 cd proxmox-vm-autoscale
 
-# Run secure automated setup
+# Run the automated setup
 sudo python3 setup_secure.py
 ```
 
-**This secure installation will:**
+**This installation will:**
 - Create dedicated `vm-autoscale` system user
 - Set up secure directory structure with proper permissions
 - Install Python dependencies in isolated virtual environment
@@ -91,7 +86,7 @@ sudo python3 setup_secure.py
 
 ### **⚙️ Configure Environment Variables**
 ```bash
-# Edit the secure environment file
+# Edit the environment file
 sudo nano /etc/vm-autoscale/.env
 ```
 
@@ -123,7 +118,7 @@ sudo -u vm-autoscale ssh-keyscan -H your_proxmox_host >> /var/lib/vm-autoscale/.
 ### **✅ Test Configuration**
 ```bash
 # Validate configuration before deployment
-sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py \
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale.py \
   --config /etc/vm-autoscale/config.yaml \
   --env-file /etc/vm-autoscale/.env \
   --validate-only
@@ -132,18 +127,18 @@ sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py \
 ### **🚀 Start Service**
 ```bash
 # Enable and start the secure service
-sudo systemctl enable vm-autoscale-secure.service
-sudo systemctl start vm-autoscale-secure.service
+sudo systemctl enable vm-autoscale.service
+sudo systemctl start vm-autoscale.service
 
 # Check status
-sudo systemctl status vm-autoscale-secure.service
+sudo systemctl status vm-autoscale.service
 ```
 
 ---
 
 ## 📋 Prerequisites
 - 🖥️ **Proxmox VE** installed on target hosts
-- 🐍 **Python 3.8+** (3.12+ recommended for latest security features)
+- 🐍 **Python 3.12+**
 - 🔑 **SSH access** to Proxmox hosts (key-based authentication recommended)
 - 🛡️ **Root access** for secure system installation
 - 💻 Familiarity with Proxmox `qm` commands and SSH
@@ -154,7 +149,7 @@ sudo systemctl status vm-autoscale-secure.service
 
 ### **🔒 Secure Configuration Format**
 
-The secure version uses environment variables for sensitive data:
+This version uses environment variables for sensitive data:
 
 ```yaml
 # Secure configuration with environment variables
@@ -242,7 +237,7 @@ The secure version includes comprehensive validation:
 ### **📜 View Logs**
 ```bash
 # Real-time logs (secure service)
-sudo journalctl -u vm-autoscale-secure.service -f
+sudo journalctl -u vm-autoscale.service -f
 
 # Log files
 sudo tail -f /var/log/vm-autoscale/vm_autoscale.log
@@ -251,10 +246,10 @@ sudo tail -f /var/log/vm-autoscale/vm_autoscale.log
 ### **🔍 Check Service Status**
 ```bash
 # Service status
-sudo systemctl status vm-autoscale-secure.service
+sudo systemctl status vm-autoscale.service
 
 # Configuration validation
-sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py --validate-only
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale.py --validate-only
 ```
 
 ### **📈 Performance Monitoring**
@@ -319,13 +314,6 @@ proxmox_hosts:
 ---
 
 ## 🚨 Migration from Original Version
-
-> [!WARNING]
-> **CRITICAL SECURITY VULNERABILITIES** in original version:
-> 1. **Command Injection** - Arbitrary code execution possible
-> 2. **Credential Exposure** - Passwords stored in plaintext
-> 3. **SSH MITM** - No host key verification
-> 4. **Input Validation** - No validation of user inputs
 
 ### **Migration Steps**
 
