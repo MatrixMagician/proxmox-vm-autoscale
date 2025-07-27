@@ -2,17 +2,47 @@ import logging
 import re
 import time
 import threading
+from typing import Tuple, Optional
+from secure_ssh_client import SecureSSHClient, SecurityException
 
 
 class VMResourceManager:
-    def __init__(self, ssh_client, vm_id, config):
+    """Secure VM resource manager with injection protection."""
+    
+    def __init__(self, ssh_client: SecureSSHClient, vm_id: int, config: dict):
         self.ssh_client = ssh_client
-        self.vm_id = vm_id
+        self.vm_id = self._validate_vm_id(vm_id)
         self.config = config
-        self.logger = logging.getLogger("vm_resource_manager")
+        self.logger = logging.getLogger(f"vm_resource_manager.{vm_id}")
         self.last_scale_time = 0
-        self.scale_cooldown = self.config.get("scale_cooldown", 300)  # Default to 5 minutes
-        self.scale_lock = threading.Lock()  # Added lock for scaling control
+        self.scale_cooldown = self.config.get("scale_cooldown", 300)
+        self.scale_lock = threading.Lock()
+    
+    @staticmethod
+    def _validate_vm_id(vm_id) -> int:
+        """Validate VM ID to prevent injection."""
+        try:
+            vm_id_int = int(vm_id)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid VM ID format: {vm_id}")
+        
+        if not 100 <= vm_id_int <= 999999:
+            raise ValueError(f"VM ID out of valid range: {vm_id_int}")
+        
+        return vm_id_int
+    
+    @staticmethod
+    def _validate_resource_value(value, min_val: int, max_val: int, name: str) -> int:
+        """Validate resource values to prevent injection and ensure bounds."""
+        try:
+            value_int = int(value)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid {name} value: {value}")
+        
+        if not min_val <= value_int <= max_val:
+            raise ValueError(f"Invalid {name}: {value_int} (must be {min_val}-{max_val})")
+        
+        return value_int
 
     def _get_command_output(self, output):
         """Helper method to properly handle command output that might be a tuple."""
@@ -21,25 +51,24 @@ class VMResourceManager:
             return str(output[0]).strip() if output and output[0] is not None else ""
         return str(output).strip() if output is not None else ""
 
-    def is_vm_running(self, retries=3, delay=5):
+    def is_vm_running(self, retries: int = 3, delay: int = 5) -> bool:
         """Check if the VM is running with retries and improved error handling."""
         for attempt in range(1, retries + 1):
             try:
-                command = f"qm status {self.vm_id} --verbose"
-                self.logger.debug(f"Executing command to check VM status: {command}")
-                output = self.ssh_client.execute_command(command)
-                output_str = self._get_command_output(output)
-                self.logger.debug(f"Command output: {output_str}")
+                stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                    "qm", "status", self.vm_id, "--verbose"
+                )
+                self.logger.debug(f"VM status command output: {stdout}")
         
-                if "status: running" in output_str.lower():
+                if "status: running" in stdout.lower():
                     self.logger.info(f"VM {self.vm_id} is running.")
                     return True
-                elif "status:" in output_str.lower():
+                elif "status:" in stdout.lower():
                     self.logger.info(f"VM {self.vm_id} is not running.")
                     return False
                 else:
                     self.logger.warning(
-                        f"Unexpected output while checking VM status: {output_str}"
+                        f"Unexpected output while checking VM status: {stdout}"
                     )
             except Exception as e:
                 self.logger.warning(
@@ -52,20 +81,21 @@ class VMResourceManager:
         )
         return False
 
-    def get_resource_usage(self):
+    def get_resource_usage(self) -> Tuple[float, float]:
         """Retrieve CPU and RAM usage as percentages."""
         try:
             if not self.is_vm_running():
                 return 0.0, 0.0
-            #command = f"qm status {self.vm_id} --verbose"
-            # Updated command  - this might well be refinable to simpler and faster.
-            vmid = self.vm_id
-            command = f"pvesh get /cluster/resources | grep 'qemu/{vmid}' | awk -F '│' '{{print $6, $15, $16}}'"
-            output = self.ssh_client.execute_command(command)
-            # example output: "  3.17%     5.00 GiB     3.82 GiB "
-            self.logger.info(f"VM status output: {output}")
-            cpu_usage = self._parse_cpu_usage(output)
-            ram_usage = self._parse_ram_usage(output)
+            
+            # Use secure command execution to get resource usage
+            stdout, stderr, exit_code = self.ssh_client.execute_command_list([
+                "sh", "-c", 
+                f"pvesh get /cluster/resources | grep 'qemu/{self.vm_id}' | awk -F '│' '{{print $6, $15, $16}}'"
+            ])
+            
+            self.logger.debug(f"VM resource usage output: {stdout}")
+            cpu_usage = self._parse_cpu_usage(stdout)
+            ram_usage = self._parse_ram_usage(stdout)
             return cpu_usage, ram_usage
         except Exception as e:
             self.logger.error(f"Failed to retrieve resource usage: {e}")
@@ -80,8 +110,11 @@ class VMResourceManager:
             self.last_scale_time = current_time
             return True
 
-    def scale_cpu(self, direction):
+    def scale_cpu(self, direction: str) -> bool:
         """Scale the CPU cores and vCPUs of the VM."""
+        if direction not in ['up', 'down']:
+            raise ValueError(f"Invalid scaling direction: {direction}")
+        
         if not self.can_scale():
             return False
 
@@ -105,8 +138,11 @@ class VMResourceManager:
             self.logger.error(f"Failed to scale CPU: {e}")
             raise
 
-    def scale_ram(self, direction):
+    def scale_ram(self, direction: str) -> bool:
         """Scale the RAM of the VM."""
+        if direction not in ['up', 'down']:
+            raise ValueError(f"Invalid scaling direction: {direction}")
+        
         if not self.can_scale():
             return False
 
@@ -131,13 +167,16 @@ class VMResourceManager:
             self.logger.error(f"Failed to scale RAM: {e}")
             raise
 
-    def _parse_cpu_usage(self, output):
+    def _parse_cpu_usage(self, output: str) -> float:
         """Parse CPU usage from VM status output."""
         try:
-            output_str = self._get_command_output(output)
-            percentage_cpu_match = re.search(r"^\s*(\d+(?:\.\d+)?)%", output_str)
+            percentage_cpu_match = re.search(r"^\s*(\d+(?:\.\d+)?)%", output.strip())
             if percentage_cpu_match:
-                return float(percentage_cpu_match.group(1))
+                cpu_usage = float(percentage_cpu_match.group(1))
+                # Validate reasonable CPU usage range
+                if 0 <= cpu_usage <= 100:
+                    return cpu_usage
+                self.logger.warning(f"CPU usage out of range: {cpu_usage}%")
             self.logger.warning("CPU usage not found in output.")
             return 0.0
         except Exception as e:
@@ -155,11 +194,11 @@ class VMResourceManager:
             self.logger.warning(f"Unknown memory unit '{unit}'. Assuming GiB.")
             return value  # Assume GiB if unit is unknown
 
-    def _parse_ram_usage(self, output):
-        """ Parses RAM usage from VM status output. """
+    def _parse_ram_usage(self, output: str) -> float:
+        """Parse RAM usage from VM status output."""
         try:
-            output_str = self._get_command_output(output)
-            self.logger.debug(f"Processing output: '{output_str}'")
+            output_str = output.strip()
+            self.logger.debug(f"Processing RAM usage output: '{output_str}'")
             # ----------------------------
             # Extract Memory Values
             # ----------------------------
@@ -201,26 +240,28 @@ class VMResourceManager:
             self.logger.error(f"Error parsing RAM usage: {e}")
             return 0.0
 
-    def _get_current_vcpus(self):
+    def _get_current_vcpus(self) -> int:
         """Retrieve current vCPUs assigned to the VM."""
         try:
-            command = f"qm config {self.vm_id}"
-            output = self.ssh_client.execute_command(command)
-            output_str = self._get_command_output(output)
-            match = re.search(r"vcpus:\s*(\d+)", output_str)
-            return int(match.group(1)) if match else 1
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "config", self.vm_id
+            )
+            match = re.search(r"vcpus:\s*(\d+)", stdout)
+            vcpus = int(match.group(1)) if match else 1
+            return self._validate_resource_value(vcpus, 1, 128, "vCPUs")
         except Exception as e:
             self.logger.error(f"Failed to retrieve vCPUs: {e}")
             return 1
 
-    def _get_current_cores(self):
+    def _get_current_cores(self) -> int:
         """Retrieve current CPU cores assigned to the VM."""
         try:
-            command = f"qm config {self.vm_id}"
-            output = self.ssh_client.execute_command(command)
-            output_str = self._get_command_output(output)
-            match = re.search(r"cores:\s*(\d+)", output_str)
-            return int(match.group(1)) if match else 1
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "config", self.vm_id
+            )
+            match = re.search(r"cores:\s*(\d+)", stdout)
+            cores = int(match.group(1)) if match else 1
+            return self._validate_resource_value(cores, 1, 128, "cores")
         except Exception as e:
             self.logger.error(f"Failed to retrieve CPU cores: {e}")
             return 1
@@ -233,14 +274,15 @@ class VMResourceManager:
         """Retrieve minimum allowed CPU cores."""
         return self.config.get("min_cores", 1)
 
-    def _get_current_ram(self):
+    def _get_current_ram(self) -> int:
         """Retrieve current RAM assigned to the VM."""
         try:
-            command = f"qm config {self.vm_id}"
-            output = self.ssh_client.execute_command(command)
-            output_str = self._get_command_output(output)
-            match = re.search(r"memory:\s*(\d+)", output_str)
-            return int(match.group(1)) if match else 512
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "config", self.vm_id
+            )
+            match = re.search(r"memory:\s*(\d+)", stdout)
+            ram = int(match.group(1)) if match else 512
+            return self._validate_resource_value(ram, 512, 1048576, "RAM")
         except Exception as e:
             self.logger.error(f"Failed to retrieve current RAM: {e}")
             return 512
@@ -253,13 +295,14 @@ class VMResourceManager:
         """Retrieve minimum allowed RAM."""
         return self.config.get("min_ram", 512)
 
-    def _set_ram(self, ram):
+    def _set_ram(self, ram: int) -> None:
         """Set the RAM for the VM."""
         try:
-            command = f"qm set {self.vm_id} -memory {ram}"
-            output = self.ssh_client.execute_command(command)
-            self._get_command_output(output)  # Process output to catch any errors
-            self.logger.info(f"RAM set to {ram} MB for VM {self.vm_id}.")
+            validated_ram = self._validate_resource_value(ram, 512, 1048576, "RAM")
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "set", self.vm_id, "-memory", validated_ram
+            )
+            self.logger.info(f"RAM set to {validated_ram} MB for VM {self.vm_id}.")
         except Exception as e:
             self.logger.error(f"Failed to set RAM to {ram}: {e}")
             raise
@@ -278,24 +321,26 @@ class VMResourceManager:
         new_cores = current_cores - 1
         self._set_cores(new_cores)
 
-    def _set_cores(self, cores):
+    def _set_cores(self, cores: int) -> None:
         """Set the CPU cores for the VM."""
         try:
-            command = f"qm set {self.vm_id} -cores {cores}"
-            output = self.ssh_client.execute_command(command)
-            self._get_command_output(output)  # Process output to catch any errors
-            self.logger.info(f"CPU cores set to {cores} for VM {self.vm_id}.")
+            validated_cores = self._validate_resource_value(cores, 1, 128, "cores")
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "set", self.vm_id, "-cores", validated_cores
+            )
+            self.logger.info(f"CPU cores set to {validated_cores} for VM {self.vm_id}.")
         except Exception as e:
             self.logger.error(f"Failed to set CPU cores to {cores}: {e}")
             raise
 
-    def _set_vcpus(self, vcpus):
+    def _set_vcpus(self, vcpus: int) -> None:
         """Set the vCPUs for the VM."""
         try:
-            command = f"qm set {self.vm_id} -vcpus {vcpus}"
-            output = self.ssh_client.execute_command(command)
-            self._get_command_output(output)  # Process output to catch any errors
-            self.logger.info(f"vCPUs set to {vcpus} for VM {self.vm_id}.")
+            validated_vcpus = self._validate_resource_value(vcpus, 1, 128, "vCPUs")
+            stdout, stderr, exit_code = self.ssh_client.execute_command_safe(
+                "qm", "set", self.vm_id, "-vcpus", validated_vcpus
+            )
+            self.logger.info(f"vCPUs set to {validated_vcpus} for VM {self.vm_id}.")
         except Exception as e:
             self.logger.error(f"Failed to set vCPUs to {vcpus}: {e}")
             raise

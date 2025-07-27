@@ -1,9 +1,15 @@
-# 🚀 VM Autoscale
+# 🚀 Proxmox VM Autoscale - Secure & Modernized
 
 ## 🌟 Overview
 **Proxmox VM Autoscale** is a dynamic scaling service that automatically adjusts virtual machine (VM) resources (CPU cores and RAM) on your Proxmox Virtual Environment (VE) based on real-time metrics and user-defined thresholds. This solution helps ensure efficient resource usage, optimizing performance and resource availability dynamically.
+This project was originally created by Fabrizio Salmi
 
 The service supports multiple Proxmox hosts via SSH connections and can be easily installed and managed as a **systemd** service for seamless automation.
+
+> [!IMPORTANT]
+> **🔒 SECURITY-ENHANCED VERSION AVAILABLE**
+> 
+> This repository now includes a **completely refactored, security-enhanced version** that addresses critical vulnerabilities and follows modern Python design principles. See the [Security Features](#-security-features) section below.
 
 > [!IMPORTANT]
 > To enable scaling of VM resources, make sure NUMA and hotplug features are enabled:
@@ -12,113 +18,170 @@ The service supports multiple Proxmox hosts via SSH connections and can be easil
 > - **Enable Memory Hotplug**: VM > Options > Hotplug > Memory ☑️
 
 ## ✨ Features
-- 🔄 **Auto-scaling of VM CPU and RAM** based on real-time resource metrics.
-- 🛠️ **Configuration-driven** setup using an easy-to-edit YAML file.
-- 🌐 **Multi-host support** via SSH (compatible with both password and key-based authentication).
-- 📲 **Gotify Notifications** for alerting you whenever scaling actions are performed.
-- ⚙️ **Systemd Integration** for effortless setup, management, and monitoring as a Linux service.
+- 🔄 **Auto-scaling of VM CPU and RAM** based on real-time resource metrics
+- 🛡️ **Security-hardened** with injection protection and credential security
+- 🛠️ **Configuration-driven** setup using validated YAML configuration
+- 🌐 **Multi-host support** via secure SSH (key-based authentication recommended)
+- 📲 **Enhanced notifications** (Gotify & Email) with rate limiting
+- ⚙️ **Systemd integration** with security hardening features
+- 🔍 **Comprehensive logging** with rotation and monitoring
+- 🧪 **Configuration validation** with detailed error reporting
 
-## 📋 Prerequisites
-- 🖥️ **Proxmox VE** must be installed on the target hosts.
-- 🐍 **Python 3.x** should be installed on the Proxmox host(s).
-- 💻 Familiarity with Proxmox `qm` commands and SSH is recommended.
+---
 
-## 🤝 Contributing
-Contributions are **more** than welcome! If you encounter a bug or have suggestions for improvement, please [open an issue](https://github.com/fabriziosalmi/proxmox-vm-autoscale/issues/new/choose) or submit a pull request.
+## 🛡️ Security Features
 
-### Contributors
-Code improvements by: **[Specimen67](https://github.com/Specimen67)**, **[brianread108](https://github.com/brianread108)**
+### 🚨 **Critical Security Fixes**
+This refactored version addresses **multiple critical security vulnerabilities** found in the original codebase:
 
-### Want to scale LXC containers instead of VM on Proxmox hosts?
-To autoscale LXC containers on Proxmox hosts, you may be interested in [this related project](https://github.com/fabriziosalmi/proxmox-lxc-autoscale).
+#### ✅ **Command Injection Protection**
+- **Before**: `f"qm status {vm_id}"` - vulnerable to injection attacks
+- **After**: `execute_command_safe("qm", "status", vm_id)` - parameterized execution
+- **Impact**: Prevents arbitrary command execution on Proxmox hosts
+
+#### ✅ **Secure Credential Management**
+- **Before**: Plaintext passwords stored in YAML files
+- **After**: Environment variables with `${VAR_NAME}` syntax
+- **Impact**: Eliminates credential exposure in configuration files
+
+#### ✅ **SSH Security Hardening**
+- **Before**: `AutoAddPolicy()` - accepts any host key (MITM vulnerable)
+- **After**: Strict host key verification with known_hosts file
+- **Impact**: Prevents man-in-the-middle attacks
+
+#### ✅ **Input Validation & Sanitization**
+- **Before**: No validation of VM IDs, resource values, or inputs
+- **After**: Comprehensive validation using Pydantic models
+- **Impact**: Prevents injection attacks and data corruption
+
+#### ✅ **Enhanced Error Handling**
+- **Before**: Detailed error messages could leak sensitive information
+- **After**: Sanitized error messages with security considerations
+- **Impact**: Prevents information disclosure through error messages
+
+### 🔒 **System-Level Security**
+- Dedicated system user (`vm-autoscale`) with minimal privileges
+- Systemd hardening (NoNewPrivileges, ProtectSystem, etc.)
+- Restrictive file permissions (600 for .env, 640 for config)
+- Log rotation with proper ownership and access controls
+
+---
 
 ## 🚀 Quick Start
 
-To install **Proxmox VM Autoscale**, execute the following `curl bash` command. This command will automatically clone the repository, execute the installation script, and set up the service for you:
+### **🔒 Secure Installation (Recommended)**
+
+For the security-enhanced version with automated setup:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/fabriziosalmi/proxmox-vm-autoscale/main/install.sh)
+# Clone the repository
+git clone https://github.com/MatrixMagician/proxmox-vm-autoscale.git
+cd proxmox-vm-autoscale
+
+# Run secure automated setup
+sudo python3 setup_secure.py
 ```
 
-🎯 **This installation script will:**
-- Clone the repository into `/usr/local/bin/vm_autoscale`.
-- Copy all necessary files to the installation directory.
-- Install the required Python dependencies.
-- Set up a **systemd unit file** to manage the autoscaling service.
+**This secure installation will:**
+- Create dedicated `vm-autoscale` system user
+- Set up secure directory structure with proper permissions
+- Install Python dependencies in isolated virtual environment
+- Configure systemd service with security hardening
+- Set up log rotation and SSH security
 
-> [!NOTE]
-> The service is enabled but not started automatically at the end of the installation. To start it manually, use the following command.
-
+### **⚙️ Configure Environment Variables**
 ```bash
-systemctl start vm_autoscale.service
+# Edit the secure environment file
+sudo nano /etc/vm-autoscale/.env
 ```
 
-> [!IMPORTANT]
-> Make sure to review the official [Proxmox documentation](https://pve.proxmox.com/wiki/Hotplug_(qemu_disk,nic,cpu,memory)) for the hotplug feature requirements to enable scaling virtual machines on the fly.
-
-## ⚡ Usage
-
-### ▶️ Start/Stop the Service
-To **start** the autoscaling service:
-
+Example `.env` file:
 ```bash
-systemctl start vm_autoscale.service
+# SSH Credentials (use strong passwords or SSH keys)
+PROXMOX_HOST1_SSH_PASSWORD=your_secure_password
+PROXMOX_HOST2_SSH_PASSWORD=another_secure_password
+
+# Email Configuration
+SMTP_PASSWORD=your_smtp_password
+
+# Gotify Configuration  
+GOTIFY_APP_TOKEN=your_gotify_token
 ```
 
-To **stop** the service:
-
+### **🔧 Configure Hosts and VMs**
 ```bash
-systemctl stop vm_autoscale.service
+# Edit the main configuration
+sudo nano /etc/vm-autoscale/config.yaml
 ```
 
-### 🔍 Check the Status
-To view the service status:
-
+### **🔑 Set Up SSH Host Keys**
 ```bash
-systemctl status vm_autoscale.service
+# Add your Proxmox host keys (prevents MITM attacks)
+sudo -u vm-autoscale ssh-keyscan -H your_proxmox_host >> /var/lib/vm-autoscale/.ssh/known_hosts
 ```
 
-### 📜 Logs
-Logs are saved to `/var/log/vm_autoscale.log`. You can monitor the logs in real-time using:
-
+### **✅ Test Configuration**
 ```bash
-tail -f /var/log/vm_autoscale.log
+# Validate configuration before deployment
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py \
+  --config /etc/vm-autoscale/config.yaml \
+  --env-file /etc/vm-autoscale/.env \
+  --validate-only
 ```
 
-Or by using `journalctl`:
-
+### **🚀 Start Service**
 ```bash
-journalctl -u vm_autoscale.service -f
+# Enable and start the secure service
+sudo systemctl enable vm-autoscale-secure.service
+sudo systemctl start vm-autoscale-secure.service
+
+# Check status
+sudo systemctl status vm-autoscale-secure.service
 ```
+
+---
+
+## 📋 Prerequisites
+- 🖥️ **Proxmox VE** installed on target hosts
+- 🐍 **Python 3.8+** (3.12+ recommended for latest security features)
+- 🔑 **SSH access** to Proxmox hosts (key-based authentication recommended)
+- 🛡️ **Root access** for secure system installation
+- 💻 Familiarity with Proxmox `qm` commands and SSH
+
+---
 
 ## ⚙️ Configuration
 
-The configuration file (`config.yaml`) is located at `/usr/local/bin/vm_autoscale/config.yaml`. This file contains settings for scaling thresholds, resource limits, Proxmox hosts, and VM information.
+### **🔒 Secure Configuration Format**
 
-### Example Configuration
+The secure version uses environment variables for sensitive data:
+
 ```yaml
+# Secure configuration with environment variables
 scaling_thresholds:
   cpu:
-    high: 80
-    low: 20
+    high: 80    # Scale up when CPU > 80%
+    low: 20     # Scale down when CPU < 20%
   ram:
-    high: 85
-    low: 25
+    high: 85    # Scale up when RAM > 85%
+    low: 25     # Scale down when RAM < 25%
 
 scaling_limits:
-  min_cores: 1
-  max_cores: 8
-  min_ram_mb: 512
-  max_ram_mb: 16384
+  min_cores: 1      # Minimum CPU cores
+  max_cores: 8      # Maximum CPU cores  
+  min_ram_mb: 1024  # Minimum RAM (MB)
+  max_ram_mb: 16384 # Maximum RAM (MB)
 
-check_interval: 60  # Check every 60 seconds
+check_interval: 300      # Check every 5 minutes
+scale_cooldown: 300      # Cooldown between scaling operations
 
 proxmox_hosts:
   - name: host1
     host: 192.168.1.10
     ssh_user: root
-    ssh_password: your_password_here
-    ssh_key: /path/to/ssh_key
+    ssh_password: ${PROXMOX_HOST1_SSH_PASSWORD}  # From environment
+    ssh_port: 22
+    # ssh_key: /path/to/ssh_key  # Preferred over password
 
 virtual_machines:
   - vm_id: 101
@@ -129,68 +192,356 @@ virtual_machines:
 
 logging:
   level: INFO
-  log_file: /var/log/vm_autoscale.log
+  log_file: /var/log/vm-autoscale/vm_autoscale.log
+
+# Enhanced notifications with security
+alerts:
+  email_enabled: false
+  email_recipient: admin@example.com
+  smtp_server: smtp.example.com
+  smtp_port: 587
+  smtp_user: your_smtp_user
+  smtp_password: ${SMTP_PASSWORD}  # From environment
 
 gotify:
-  enabled: true
+  enabled: false
   server_url: https://gotify.example.com
-  app_token: your_gotify_app_token_here
+  app_token: ${GOTIFY_APP_TOKEN}   # From environment
   priority: 5
+
+# Host resource limits for safety
+host_limits:
+  max_host_cpu_percent: 90
+  max_host_ram_percent: 90
 ```
 
-### ⚙️ Configuration Details
-- **`scaling_thresholds`**: Defines the CPU and RAM usage thresholds that trigger scaling actions (e.g., when CPU > 80%, scale up).
-- **`scaling_limits`**: Specifies the **minimum** and **maximum** resources (CPU cores and RAM) each VM can have.
-- **`proxmox_hosts`**: Contains the details of Proxmox hosts, including SSH credentials.
-- **`virtual_machines`**: Lists the VMs to be managed by the autoscaling script, allowing per-VM scaling customization.
-- **`logging`**: Specifies the logging level and log file path for activity tracking and debugging.
-- **`gotify`**: Configures **Gotify notifications** to send alerts when scaling actions are performed.
+### **📊 Configuration Reference**
 
-## 📲 Gotify Notifications
-Gotify is used to send real-time notifications regarding scaling actions. Configure Gotify in the `config.yaml` file:
-- **`enabled`**: Set to `true` to enable notifications.
-- **`server_url`**: URL of the Gotify server.
-- **`app_token`**: Authentication token for accessing Gotify.
-- **`priority`**: Notification priority level (1-10).
+#### Environment Variables
 
-## 👨‍💻 Development
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `PROXMOX_HOST*_SSH_PASSWORD` | SSH password for Proxmox hosts | If not using SSH keys |
+| `SMTP_PASSWORD` | SMTP server password | If email alerts enabled |
+| `GOTIFY_APP_TOKEN` | Gotify application token | If Gotify enabled |
 
-### 🔧 Requirements
-- **Python 3.x**
-- Required Python Packages: `paramiko`, `requests`, `PyYAML`
+#### Configuration Validation
 
-### 🐛 Running Manually
-To run the script manually for debugging or testing:
+The secure version includes comprehensive validation:
 
+- **VM ID Format**: Must be 100-999999
+- **Resource Limits**: Validated ranges for CPU/RAM
+- **Host Connectivity**: SSH credential validation
+- **Email Format**: RFC-compliant email validation
+- **URL Validation**: Proper URL format checking
+
+---
+
+## 📊 Monitoring and Logs
+
+### **📜 View Logs**
 ```bash
-python3 /usr/local/bin/vm_autoscale/autoscale.py
+# Real-time logs (secure service)
+sudo journalctl -u vm-autoscale-secure.service -f
+
+# Log files
+sudo tail -f /var/log/vm-autoscale/vm_autoscale.log
 ```
 
-### Others projects
+### **🔍 Check Service Status**
+```bash
+# Service status
+sudo systemctl status vm-autoscale-secure.service
 
-If You like my projects, you may also like these ones:
+# Configuration validation
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py --validate-only
+```
 
-- [caddy-waf](https://github.com/fabriziosalmi/caddy-waf) Caddy WAF (Regex Rules, IP and DNS filtering, Rate Limiting, GeoIP, Tor, Anomaly Detection) 
-- [patterns](https://github.com/fabriziosalmi/patterns) Automated OWASP CRS and Bad Bot Detection for Nginx, Apache, Traefik and HaProxy
-- [blacklists](https://github.com/fabriziosalmi/blacklists) Hourly updated domains blacklist 🚫 
-- [UglyFeed](https://github.com/fabriziosalmi/UglyFeed) Retrieve, aggregate, filter, evaluate, rewrite and serve RSS feeds using Large Language Models for fun, research and learning purposes 
-- [proxmox-lxc-autoscale](https://github.com/fabriziosalmi/proxmox-lxc-autoscale) Automatically scale LXC containers resources on Proxmox hosts 
-- [DevGPT](https://github.com/fabriziosalmi/DevGPT) Code togheter, right now! GPT powered code assistant to build project in minutes
-- [websites-monitor](https://github.com/fabriziosalmi/websites-monitor) Websites monitoring via GitHub Actions (expiration, security, performances, privacy, SEO)
-- [caddy-mib](https://github.com/fabriziosalmi/caddy-mib) Track and ban client IPs generating repetitive errors on Caddy 
-- [zonecontrol](https://github.com/fabriziosalmi/zonecontrol) Cloudflare Zones Settings Automation using GitHub Actions 
-- [lws](https://github.com/fabriziosalmi/lws) linux (containers) web services
-- [cf-box](https://github.com/fabriziosalmi/cf-box) cf-box is a set of Python tools to play with API and multiple Cloudflare accounts.
-- [limits](https://github.com/fabriziosalmi/limits) Automated rate limits implementation for web servers 
-- [dnscontrol-actions](https://github.com/fabriziosalmi/dnscontrol-actions) Automate DNS updates and rollbacks across multiple providers using DNSControl and GitHub Actions 
-- [proxmox-lxc-autoscale-ml](https://github.com/fabriziosalmi/proxmox-lxc-autoscale-ml) Automatically scale the LXC containers resources on Proxmox hosts with AI
-- [csv-anonymizer](https://github.com/fabriziosalmi/csv-anonymizer) CSV fuzzer/anonymizer
-- [iamnotacoder](https://github.com/fabriziosalmi/iamnotacoder) AI code generation and improvement
+### **📈 Performance Monitoring**
+- CPU/RAM usage tracking per VM
+- Host resource monitoring
+- Scaling operation success/failure rates
+- Notification delivery status
+- SSH connection health
 
+---
 
-### ⚠️ Disclaimer
-> [!CAUTION]
-> The author assumes no responsibility for any damage or issues that may arise from using this tool.
+## 🔧 Advanced Configuration
 
-### 📜 License
-This project is licensed under the **MIT License**. See the LICENSE file for complete details.
+### **🔑 SSH Key-Based Authentication (Recommended)**
+
+1. **Generate SSH key pair:**
+```bash
+ssh-keygen -t ed25519 -f /var/lib/vm-autoscale/.ssh/id_ed25519
+```
+
+2. **Copy public key to Proxmox hosts:**
+```bash
+ssh-copy-id -i /var/lib/vm-autoscale/.ssh/id_ed25519.pub root@proxmox-host
+```
+
+3. **Update configuration:**
+```yaml
+proxmox_hosts:
+  - name: host1
+    host: 192.168.1.10
+    ssh_user: root
+    ssh_key: /var/lib/vm-autoscale/.ssh/id_ed25519
+    ssh_port: 22
+```
+
+### **🛡️ Security Best Practices**
+
+#### 1. **Credential Security**
+- ✅ Use environment variables for all sensitive data
+- ✅ Set restrictive file permissions (600 for .env files)
+- ✅ Prefer SSH key authentication over passwords
+- ✅ Regularly rotate credentials
+
+#### 2. **Network Security**
+- ✅ Use SSH host key verification
+- ✅ Consider VPN for Proxmox management traffic
+- ✅ Limit SSH access to specific IP ranges
+- ✅ Use strong SSH keys (Ed25519 recommended)
+
+#### 3. **System Security**
+- ✅ Run service as dedicated user (not root)
+- ✅ Enable systemd security features
+- ✅ Regular security updates
+- ✅ Monitor logs for suspicious activity
+
+#### 4. **Operational Security**
+- ✅ Regular backup of configurations
+- ✅ Monitor service health and performance
+- ✅ Implement log rotation and retention
+- ✅ Regular security assessments
+
+---
+
+## 🚨 Migration from Original Version
+
+> [!WARNING]
+> **CRITICAL SECURITY VULNERABILITIES** in original version:
+> 1. **Command Injection** - Arbitrary code execution possible
+> 2. **Credential Exposure** - Passwords stored in plaintext
+> 3. **SSH MITM** - No host key verification
+> 4. **Input Validation** - No validation of user inputs
+
+### **Migration Steps**
+
+#### 1. **Backup Existing Setup**
+```bash
+cp config.yaml config.yaml.backup
+cp autoscale.py autoscale.py.backup
+```
+
+#### 2. **Install Secure Version**
+```bash
+sudo python3 setup_secure.py
+```
+
+#### 3. **Migrate Configuration**
+- Copy VM and host definitions to new secure format
+- Move passwords to environment variables
+- Update paths and settings as needed
+
+#### 4. **Security Setup**
+```bash
+# Set proper file permissions
+sudo chmod 600 /etc/vm-autoscale/.env
+sudo chmod 640 /etc/vm-autoscale/config.yaml
+
+# Add SSH host keys
+sudo -u vm-autoscale ssh-keyscan -H your_host >> /var/lib/vm-autoscale/.ssh/known_hosts
+```
+
+#### 5. **Test and Deploy**
+```bash
+# Test configuration
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py --validate-only
+
+# Start service
+sudo systemctl enable vm-autoscale-secure.service
+sudo systemctl start vm-autoscale-secure.service
+```
+
+---
+
+## 🧪 Development & Testing
+
+### **🔧 Requirements**
+```bash
+# Install dependencies
+pip install paramiko>=3.4.0 requests>=2.31.0 PyYAML>=6.0.1 \
+            cryptography>=41.0.0 pydantic>=2.5.0 python-dotenv>=1.0.0
+```
+
+### **🐛 Manual Testing**
+```bash
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Test secure version
+python autoscale_secure.py --validate-only --config config_test.yaml --env-file .env.test
+```
+
+### **🔍 Debug Mode**
+```bash
+# Enable debug logging in config.yaml
+logging:
+  level: DEBUG
+
+# Restart service and monitor logs
+sudo systemctl restart vm-autoscale-secure.service
+sudo journalctl -u vm-autoscale-secure.service -f
+```
+
+---
+
+## 📋 Troubleshooting
+
+### **Common Issues**
+
+#### **SSH Connection Failures**
+```bash
+# Check host key verification
+sudo -u vm-autoscale ssh-keyscan -H your_host >> /var/lib/vm-autoscale/.ssh/known_hosts
+
+# Test SSH connection
+sudo -u vm-autoscale ssh user@host
+```
+
+#### **Permission Errors**
+```bash
+# Fix file permissions
+sudo chown -R vm-autoscale:vm-autoscale /var/lib/vm-autoscale
+sudo chmod 600 /etc/vm-autoscale/.env
+sudo chmod 640 /etc/vm-autoscale/config.yaml
+```
+
+#### **Configuration Validation Errors**
+```bash
+# Run validation with detailed output
+sudo -u vm-autoscale python3 /usr/local/bin/vm_autoscale/autoscale_secure.py \
+  --config /etc/vm-autoscale/config.yaml \
+  --env-file /etc/vm-autoscale/.env \
+  --validate-only
+```
+
+### **Security Alerts**
+
+If you encounter security-related errors:
+
+1. **Host Key Verification Failed**
+   - Add the correct host key to known_hosts
+   - Verify you're connecting to the correct host
+
+2. **Credential Validation Failed**
+   - Check environment variables are set correctly
+   - Verify SSH key permissions (600 for private keys)
+
+3. **Input Validation Errors**
+   - Check VM IDs are in valid range (100-999999)
+   - Verify resource limits are reasonable
+   - Ensure all required fields are present
+
+---
+
+## 📊 Performance & Metrics
+
+### **📈 Performance Improvements**
+
+#### **Current Version**
+- ✅ **Zero known security vulnerabilities**
+- ✅ **Comprehensive input validation**
+- ✅ **Efficient connection management**
+- ✅ **Smart retry logic with backoff**
+- ✅ **Clean, modular architecture**
+
+### **🎯 Efficiency Gains**
+- **SSH Connections**: Context manager-based connection handling
+- **Resource Monitoring**: Optimized command execution with caching
+- **Memory Usage**: Efficient logging with rotation (10MB max, 5 files)
+- **Error Recovery**: Exponential backoff and intelligent retry logic
+- **Rate Limiting**: Prevents notification spam (60/hour max)
+
+---
+
+## 🏗️ Architecture Overview
+
+### **📁 File Structure**
+```
+proxmox-vm-autoscale/
+├── 🔒 Secure Version (Production)
+│   ├── autoscale_secure.py           # Main secure application
+│   ├── secure_ssh_client.py          # Injection-proof SSH client
+│   ├── secure_config_loader.py       # Secure configuration loader
+│   ├── config_models.py              # Pydantic validation models
+│   ├── secure_notification_manager.py # Enhanced notifications
+│   ├── setup_secure.py               # Automated secure installation
+│   ├── config_secure.yaml            # Secure configuration template
+│   └── .env.template                 # Environment variables template
+├── 📜 Documentation
+│   ├── README.md                     # This comprehensive guide
+│   └── REFACTORING_SUMMARY.md        # Technical refactoring details
+├── 🔧 Utilities
+│   ├── requirements.txt              # Python dependencies
+│   └── vm_autoscale.service          # Systemd service file
+└── 📚 Original Version (Legacy)
+    ├── autoscale.py                  # Original application
+    ├── vm_manager.py                 # VM resource management
+    ├── ssh_utils.py                  # Basic SSH client
+    └── host_resource_checker.py      # Host monitoring
+```
+
+### **🏛️ Component Architecture**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VM Autoscaler Service                     │
+├─────────────────────────────────────────────────────────────┤
+│  🔒 Security Layer                                          │
+│  • Input validation (Pydantic)                             │
+│  • Command injection protection                            │
+│  • Credential management                                   │
+│  • SSH security hardening                                  │
+├─────────────────────────────────────────────────────────────┤
+│  🏗️ Application Layer                                       │
+│  • Resource monitoring                                     │
+│  • Scaling decision engine                                 │
+│  • Configuration management                                │
+│  • Notification system                                     │
+├─────────────────────────────────────────────────────────────┤
+│  🔌 Integration Layer                                       │
+│  • Secure SSH client                                       │
+│  • Proxmox API integration                                 │
+│  • External notification services                          │
+│  • System logging and monitoring                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🤝 Contributing
+
+### Contributors
+Code improvements by: **[Specimen67](https://github.com/Specimen67)**, **[brianread108](https://github.com/brianread108)**
+
+---
+
+## 🔗 Related Projects
+
+- [proxmox-lxc-autoscale](https://github.com/MatrixMagician/proxmox-lxc-autoscale) - Automatically scale LXC containers on Proxmox hosts
+
+## 📜 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for complete details.
+
+## 🎯 Support
+
+For support and questions:
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/MatrixMagician/proxmox-vm-autoscale/issues)
+- 💬 **Discussions**: Use GitHub Discussions for general questions
+- 📧 **Security Issues**: Report privately to maintainers

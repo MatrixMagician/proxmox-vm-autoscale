@@ -1,4 +1,5 @@
-# Configuration file for vm_autoscale
+# Secure Configuration file for vm_autoscale
+# Uses environment variables for sensitive data
 
 # Global thresholds for scaling VMs
 scaling_thresholds:
@@ -13,71 +14,63 @@ scaling_thresholds:
 scaling_limits:
   min_cores: 1          # Minimum number of CPU cores that a VM can have
   max_cores: 8          # Maximum number of CPU cores that a VM can have
-  min_ram_mb: 1024       # Minimum RAM (in MB) that a VM can have (updated since NUMA doeasnt like less than 1024MB)
+  min_ram_mb: 1024      # Minimum RAM (in MB) that a VM can have
   max_ram_mb: 16384     # Maximum RAM (in MB) that a VM can have
 
 # Time intervals for checking VM resources and performing actions (in seconds)
 check_interval: 300      # How often to check VM stats and take action if needed
+scale_cooldown: 300      # Cooldown between scaling operations for the same VM
 
 # List of Proxmox hosts to manage
 proxmox_hosts:
   - name: host1
     host: 192.168.1.10
     ssh_user: root
-    ssh_password: your_password_here   # SSH password or key must be provided
-    ssh_key: /path/to/ssh_key          # Path to SSH private key (optional, use if no password)
-    ssh_port: 22                       # SSH Port (default 22)
+    ssh_password: ${PROXMOX_HOST1_SSH_PASSWORD}  # From environment variable
+    # ssh_key: /path/to/ssh_key                     # Optional: use key-based auth instead
+    ssh_port: 22                                  # SSH Port (default 22)
 
   - name: host2
     host: 192.168.1.11
     ssh_user: root
-    ssh_password: your_password_here
-    ssh_key: /path/to/ssh_key
+    ssh_password: ${PROXMOX_HOST2_SSH_PASSWORD}  # From environment variable
+    # ssh_key: /path/to/ssh_key                     # Optional: use key-based auth instead
+    ssh_port: 22
 
 # Virtual machines to be monitored and scaled
 virtual_machines:
-  - vm_id: "101"
-    proxmox_host: "host1"
+  - vm_id: 101
+    proxmox_host: host1
     scaling_enabled: true
     cpu_scaling: true    # Enable/disable CPU scaling
     ram_scaling: true    # Enable/disable RAM scaling
-    thresholds:
-      cpu_high: 80
-      cpu_low: 20
-      ram_high: 80
-      ram_low: 20
 
   - vm_id: 102
     proxmox_host: host2
     scaling_enabled: true
     cpu_scaling: true
     ram_scaling: true
-    thresholds:
-      cpu_high: 80
-      cpu_low: 20
-      ram_high: 80
-      ram_low: 20
 
 # Logging configuration
 logging:
   level: INFO                         # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
   log_file: /var/log/vm_autoscale.log # Path to the log file
 
-# Alerts configuration (Optional)
+# Email alerts configuration (Optional)
 alerts:
-  email_enabled: false
-  email_recipient: admin@example.com
-  smtp_server: smtp.example.com
-  smtp_port: 587
-  smtp_user: your_smtp_user
-  smtp_password: your_smtp_password
+  email_enabled: false                      # Set to true to enable email notifications
+  email_recipient: admin@example.com       # Email recipient
+  smtp_server: smtp.example.com            # SMTP server
+  smtp_port: 587                           # SMTP port
+  smtp_user: your_smtp_user                # SMTP username
+  smtp_password: ${SMTP_PASSWORD}          # SMTP password from environment variable
 
 # Gotify notifications configuration (Optional)
 gotify:
-  enabled: false
-  server_url: https://gotify.example.com        # Base URL of the Gotify server
-  app_token: your_gotify_app_token_here         # Application token for authentication
-  priority: 5                                   # Notification priority level (1-10)
+  enabled: false                                    # Set to true to enable Gotify notifications
+  server_url: https://gotify.example.com           # Base URL of the Gotify server
+  app_token: ${GOTIFY_APP_TOKEN}                   # Application token from environment variable
+  priority: 5                                       # Notification priority level (1-10)
 
 # Safety checks for host resource limits
 host_limits:
