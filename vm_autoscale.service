@@ -1,15 +1,26 @@
 [Unit]
-Description=Proxmox VM Autoscale Service
-Documentation=https://github.com/fabriziosalmi/proxmox-vm-autoscale
+Description=Proxmox VM Autoscale Service (API-based)
+Documentation=https://github.com/MatrixMagician/proxmox-vm-autoscale
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /usr/local/bin/vm_autoscale/autoscale.py
+ExecStart=/usr/bin/python3 /usr/local/bin/vm_autoscale/api_autoscale.py --config /etc/vm-autoscale/api_config.yaml --env-file /etc/vm-autoscale/.env
 WorkingDirectory=/usr/local/bin/vm_autoscale
 Restart=always
 RestartSec=10
-User=root
+User=vm-autoscale
+Group=vm-autoscale
 Environment=PYTHONUNBUFFERED=1
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/vm-autoscale
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
 
 [Install]
 WantedBy=multi-user.target

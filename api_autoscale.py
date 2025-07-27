@@ -1,5 +1,6 @@
 """
-Secure VM Autoscaler with modern Python design patterns and security improvements.
+API-based VM Autoscaler using native Proxmox API calls.
+Completely replaces SSH-based communication with direct API integration.
 """
 import logging
 import logging.config
@@ -14,25 +15,26 @@ import json
 
 from config_loader import SecureConfigLoader, ConfigurationError
 from config_models import VMAutoscaleConfig, ProxmoxHost, VirtualMachine
-from ssh_client import SecureSSHClient, SecurityException
-from vm_manager import VMResourceManager
-from host_resource_checker import HostResourceChecker
+from proxmox_api_client import ProxmoxAPIClient, ProxmoxAPIException, ProxmoxAuthenticationError
+from api_vm_manager import APIVMResourceManager
+from api_host_resource_checker import APIHostResourceChecker
 from notification_manager import SecureNotificationManager
 
 
-class VMAutoscaler:
+class APIVMAutoscaler:
     """
-    Secure VM Autoscaler with enhanced security features:
-    - Secure configuration loading with validation
-    - Injection-proof SSH command execution
-    - Proper credential handling
+    API-based VM Autoscaler with enhanced features:
+    - Native Proxmox API integration
+    - Support for both API tokens and username/password authentication
+    - Automatic node discovery for clusters
+    - Configurable SSL certificate validation
     - Enhanced error handling and logging
     - Graceful shutdown handling
     """
 
     def __init__(self, config_path: str, logging_config_path: Optional[str] = None, env_file: Optional[str] = None):
         """
-        Initialize the VM Autoscaler.
+        Initialize the API-based VM Autoscaler.
         
         Args:
             config_path: Path to configuration file
@@ -54,10 +56,10 @@ class VMAutoscaler:
         self.shutdown_event = threading.Event()
         self._setup_signal_handlers()
         
-        # SSH connection pool
-        self.ssh_connections: Dict[str, SecureSSHClient] = {}
+        # API client pool
+        self.api_clients: Dict[str, ProxmoxAPIClient] = {}
         
-        self.logger.info("VM Autoscaler initialized successfully")
+        self.logger.info("API-based VM Autoscaler initialized successfully")
 
     def _load_configuration(self) -> VMAutoscaleConfig:
         """Load and validate configuration."""
@@ -87,7 +89,7 @@ class VMAutoscaler:
         else:
             self._setup_default_logging()
         
-        return logging.getLogger("vm_autoscaler")
+        return logging.getLogger("api_vm_autoscaler")
 
     def _setup_default_logging(self) -> None:
         """Setup default logging configuration."""
@@ -134,51 +136,60 @@ class VMAutoscaler:
         signal.signal(signal.SIGTERM, signal_handler)
 
     @contextmanager
-    def _get_ssh_connection(self, host: ProxmoxHost):
+    def _get_api_client(self, host: ProxmoxHost):
         """
-        Context manager for SSH connections with proper cleanup.
+        Context manager for API clients with proper cleanup.
         
         Args:
             host: Proxmox host configuration
             
         Yields:
-            SecureSSHClient: Connected SSH client
+            ProxmoxAPIClient: Connected API client
         """
-        ssh_client = None
+        api_client = None
         try:
-            ssh_client = SecureSSHClient(
+            api_client = ProxmoxAPIClient(
                 host=host.host,
-                user=host.ssh_user,
-                password=host.get_ssh_password(),
-                key_path=host.ssh_key,
-                port=host.ssh_port,
-                max_retries=3
+                port=host.api_port,
+                username=host.api_username,
+                password=host.get_api_password(),
+                api_token_id=host.get_api_token_id(),
+                api_token_secret=host.get_api_token_secret(),
+                verify_ssl=host.verify_ssl,
+                ca_cert_path=host.ca_cert_path,
+                timeout=host.timeout,
+                max_retries=host.max_retries,
+                node_name=host.node_name,
+                auto_discover_nodes=host.auto_discover_nodes
             )
-            ssh_client.connect()
-            yield ssh_client
-        except SecurityException as e:
-            self.logger.error(f"Security error connecting to {host.name}: {e}")
+            api_client.authenticate()
+            yield api_client
+        except ProxmoxAuthenticationError as e:
+            self.logger.error(f"Authentication error connecting to {host.name}: {e}")
+            raise
+        except ProxmoxAPIException as e:
+            self.logger.error(f"API error connecting to {host.name}: {e}")
             raise
         except Exception as e:
             self.logger.error(f"Failed to connect to {host.name}: {e}")
             raise
         finally:
-            if ssh_client:
-                ssh_client.close()
+            if api_client:
+                api_client.close()
 
     def process_vm(self, host: ProxmoxHost, vm: VirtualMachine) -> None:
         """
-        Process a single VM for autoscaling with enhanced security.
+        Process a single VM for autoscaling using API calls.
         
         Args:
             host: Proxmox host configuration
             vm: Virtual machine configuration
         """
         try:
-            with self._get_ssh_connection(host) as ssh_client:
-                # Initialize managers with secure SSH client
-                vm_manager = VMResourceManager(ssh_client, vm.vm_id, self._get_vm_config())
-                host_checker = HostResourceChecker(ssh_client)
+            with self._get_api_client(host) as api_client:
+                # Initialize managers with API client
+                vm_manager = APIVMResourceManager(api_client, vm.vm_id, self._get_vm_config())
+                host_checker = APIHostResourceChecker(api_client, host.node_name)
                 
                 # Check if VM is running
                 if not vm_manager.is_vm_running():
@@ -203,12 +214,19 @@ class VMAutoscaler:
                 # Perform scaling operations
                 self._handle_scaling_operations(vm_manager, vm, current_cpu_usage, current_ram_usage)
 
-        except SecurityException as e:
-            error_msg = f"Security error processing VM {vm.vm_id} on host {host.name}: {e}"
+        except ProxmoxAuthenticationError as e:
+            error_msg = f"Authentication error processing VM {vm.vm_id} on host {host.name}: {e}"
             self.logger.error(error_msg)
             self.notification_manager.send_notification(
-                f"Security alert: VM {vm.vm_id} processing failed",
+                f"Authentication failed: VM {vm.vm_id} on {host.name}",
                 priority=10
+            )
+        except ProxmoxAPIException as e:
+            error_msg = f"API error processing VM {vm.vm_id} on host {host.name}: {e}"
+            self.logger.error(error_msg)
+            self.notification_manager.send_notification(
+                f"API error: VM {vm.vm_id} processing failed",
+                priority=8
             )
         except Exception as e:
             error_msg = f"Error processing VM {vm.vm_id} on host {host.name}: {e}"
@@ -220,7 +238,7 @@ class VMAutoscaler:
 
     def _handle_scaling_operations(
         self, 
-        vm_manager: VMResourceManager, 
+        vm_manager: APIVMResourceManager, 
         vm: VirtualMachine,
         cpu_usage: float, 
         ram_usage: float
@@ -229,7 +247,7 @@ class VMAutoscaler:
         Handle CPU and RAM scaling operations independently.
         
         Args:
-            vm_manager: VM resource manager
+            vm_manager: API-based VM resource manager
             vm: VM configuration
             cpu_usage: Current CPU usage percentage
             ram_usage: Current RAM usage percentage
@@ -248,7 +266,7 @@ class VMAutoscaler:
             except Exception as e:
                 self.logger.error(f"RAM scaling failed for VM {vm.vm_id}: {e}")
 
-    def _handle_cpu_scaling(self, vm_manager: VMResourceManager, vm_id: int, cpu_usage: float) -> None:
+    def _handle_cpu_scaling(self, vm_manager: APIVMResourceManager, vm_id: int, cpu_usage: float) -> None:
         """Handle CPU scaling decisions."""
         cpu_thresholds = self.config.scaling_thresholds.cpu
         
@@ -263,7 +281,7 @@ class VMAutoscaler:
                 self.logger.info(message)
                 self.notification_manager.send_notification(message, priority=5)
 
-    def _handle_ram_scaling(self, vm_manager: VMResourceManager, vm_id: int, ram_usage: float) -> None:
+    def _handle_ram_scaling(self, vm_manager: APIVMResourceManager, vm_id: int, ram_usage: float) -> None:
         """Handle RAM scaling decisions."""
         ram_thresholds = self.config.scaling_thresholds.ram
         
@@ -289,8 +307,8 @@ class VMAutoscaler:
         }
 
     def run(self) -> None:
-        """Main execution loop with enhanced error handling and security."""
-        self.logger.info("Starting secure VM Autoscaler")
+        """Main execution loop with enhanced error handling and API integration."""
+        self.logger.info("Starting API-based VM Autoscaler")
         
         try:
             while not self.shutdown_event.is_set():
@@ -357,25 +375,74 @@ class VMAutoscaler:
         """Cleanup resources on shutdown."""
         self.logger.info("Performing cleanup...")
         
-        # Close any remaining SSH connections
-        for ssh_client in self.ssh_connections.values():
+        # Close any remaining API clients
+        for api_client in self.api_clients.values():
             try:
-                ssh_client.close()
+                api_client.close()
             except Exception as e:
-                self.logger.error(f"Error closing SSH connection: {e}")
+                self.logger.error(f"Error closing API client: {e}")
         
-        self.ssh_connections.clear()
-        self.logger.info("VM Autoscaler shutdown complete")
+        self.api_clients.clear()
+        self.logger.info("API-based VM Autoscaler shutdown complete")
+
+    def get_cluster_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive cluster status information.
+        
+        Returns:
+            Dictionary containing cluster status and VM information
+        """
+        cluster_status = {
+            "hosts": {},
+            "vms": {},
+            "summary": {
+                "total_hosts": len(self.config.proxmox_hosts),
+                "total_vms": len(self.config.virtual_machines),
+                "timestamp": time.time()
+            }
+        }
+        
+        # Check each host
+        for host in self.config.proxmox_hosts:
+            try:
+                with self._get_api_client(host) as api_client:
+                    host_checker = APIHostResourceChecker(api_client, host.node_name)
+                    host_info = host_checker.get_detailed_host_info()
+                    cluster_status["hosts"][host.name] = host_info
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to get status for host {host.name}: {e}")
+                cluster_status["hosts"][host.name] = {"error": str(e)}
+        
+        # Check each VM
+        hosts_by_name = {host.name: host for host in self.config.proxmox_hosts}
+        
+        for vm in self.config.virtual_machines:
+            host = hosts_by_name.get(vm.proxmox_host)
+            if not host:
+                continue
+                
+            try:
+                with self._get_api_client(host) as api_client:
+                    vm_manager = APIVMResourceManager(api_client, vm.vm_id, self._get_vm_config())
+                    vm_info = vm_manager.get_vm_info()
+                    cluster_status["vms"][vm.vm_id] = vm_info
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to get status for VM {vm.vm_id}: {e}")
+                cluster_status["vms"][vm.vm_id] = {"error": str(e)}
+        
+        return cluster_status
 
 
 def main():
-    """Entry point of the secure VM Autoscaler application."""
+    """Entry point of the API-based VM Autoscaler application."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Secure Proxmox VM Autoscaler")
+    parser = argparse.ArgumentParser(description="API-based Proxmox VM Autoscaler")
     parser.add_argument(
         "--config", 
-        default="/usr/local/bin/vm_autoscale/config.yaml",
+        default="/usr/local/bin/vm_autoscale/api_config.yaml",
         help="Path to configuration file"
     )
     parser.add_argument(
@@ -392,12 +459,17 @@ def main():
         action="store_true",
         help="Validate configuration and exit"
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show cluster status and exit"
+    )
     
     args = parser.parse_args()
     
     try:
         # Initialize autoscaler
-        autoscaler = VMAutoscaler(
+        autoscaler = APIVMAutoscaler(
             config_path=args.config,
             logging_config_path=args.logging_config,
             env_file=args.env_file
@@ -407,14 +479,22 @@ def main():
             print("Configuration validation successful")
             sys.exit(0)
         
+        if args.status:
+            status = autoscaler.get_cluster_status()
+            print(json.dumps(status, indent=2, default=str))
+            sys.exit(0)
+        
         # Run the autoscaler
         autoscaler.run()
         
     except ConfigurationError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
-    except SecurityException as e:
-        print(f"Security error: {e}", file=sys.stderr)
+    except ProxmoxAuthenticationError as e:
+        print(f"Authentication error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ProxmoxAPIException as e:
+        print(f"API error: {e}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Failed to start VM Autoscaler: {e}", file=sys.stderr)

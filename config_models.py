@@ -63,15 +63,30 @@ class ScalingLimits(BaseModel):
 
 
 class ProxmoxHost(BaseModel):
-    """Proxmox host configuration with secure credential handling."""
+    """Proxmox host configuration with API and SSH credential handling."""
     model_config = ConfigDict(str_strip_whitespace=True)
     
     name: str = Field(min_length=1, description="Host identifier")
     host: str = Field(min_length=1, description="Hostname or IP address")
-    ssh_user: str = Field(min_length=1, description="SSH username")
-    ssh_password: Optional[str] = Field(default=None, description="SSH password (use env var)")
-    ssh_key: Optional[str] = Field(default=None, description="Path to SSH private key")
-    ssh_port: int = Field(default=22, ge=1, le=65535, description="SSH port")
+    
+    # API Authentication (primary method)
+    api_port: int = Field(default=8006, ge=1, le=65535, description="Proxmox API port")
+    api_username: Optional[str] = Field(default=None, description="API username (e.g., root@pam)")
+    api_password: Optional[str] = Field(default=None, description="API password (use env var)")
+    api_token_id: Optional[str] = Field(default=None, description="API token ID (use env var)")
+    api_token_secret: Optional[str] = Field(default=None, description="API token secret (use env var)")
+    
+    # SSL Configuration
+    verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
+    ca_cert_path: Optional[str] = Field(default=None, description="Path to custom CA certificate")
+    
+    # Node Configuration
+    node_name: Optional[str] = Field(default=None, description="Specific node name (for single node setups)")
+    auto_discover_nodes: bool = Field(default=False, description="Auto-discover cluster nodes")
+    
+    # Connection Options
+    timeout: int = Field(default=30, ge=5, le=300, description="API request timeout in seconds")
+    max_retries: int = Field(default=3, ge=1, le=10, description="Maximum retry attempts")
 
     @field_validator('host')
     @classmethod
@@ -84,28 +99,55 @@ class ProxmoxHost(BaseModel):
             raise ValueError('Invalid host format')
         return v
 
-    @field_validator('ssh_key')
+    @field_validator('ca_cert_path')
     @classmethod
-    def validate_ssh_key(cls, v: Optional[str]) -> Optional[str]:
+    def validate_ca_cert(cls, v: Optional[str]) -> Optional[str]:
         if v and not Path(v).exists():
-            raise ValueError(f'SSH key file does not exist: {v}')
+            raise ValueError(f'CA certificate file does not exist: {v}')
         return v
 
-    def get_ssh_password(self) -> Optional[str]:
-        """Get SSH password from environment variable if not directly specified."""
-        if self.ssh_password:
+    def get_api_password(self) -> Optional[str]:
+        """Get API password from environment variable if not directly specified."""
+        if self.api_password:
             # Check if it's an environment variable reference
-            if self.ssh_password.startswith('${') and self.ssh_password.endswith('}'):
-                env_var = self.ssh_password[2:-1]
+            if self.api_password.startswith('${') and self.api_password.endswith('}'):
+                env_var = self.api_password[2:-1]
                 return os.getenv(env_var)
-            return self.ssh_password
+            return self.api_password
+        return None
+
+    def get_api_token_id(self) -> Optional[str]:
+        """Get API token ID from environment variable if not directly specified."""
+        if self.api_token_id:
+            if self.api_token_id.startswith('${') and self.api_token_id.endswith('}'):
+                env_var = self.api_token_id[2:-1]
+                return os.getenv(env_var)
+            return self.api_token_id
+        return None
+
+    def get_api_token_secret(self) -> Optional[str]:
+        """Get API token secret from environment variable if not directly specified."""
+        if self.api_token_secret:
+            if self.api_token_secret.startswith('${') and self.api_token_secret.endswith('}'):
+                env_var = self.api_token_secret[2:-1]
+                return os.getenv(env_var)
+            return self.api_token_secret
         return None
 
     def validate_credentials(self) -> None:
-        """Validate that either password or key is provided."""
-        password = self.get_ssh_password()
-        if not password and not self.ssh_key:
-            raise ValueError(f"Host {self.name}: Either ssh_password or ssh_key must be provided")
+        """Validate that either password or token authentication is configured."""
+        password = self.get_api_password()
+        token_id = self.get_api_token_id()
+        token_secret = self.get_api_token_secret()
+        
+        has_password_auth = self.api_username and password
+        has_token_auth = token_id and token_secret
+        
+        if not has_password_auth and not has_token_auth:
+            raise ValueError(
+                f"Host {self.name}: Either api_username/api_password or "
+                f"api_token_id/api_token_secret must be provided"
+            )
 
 
 class VirtualMachine(BaseModel):

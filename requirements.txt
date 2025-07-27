@@ -1,6 +1,10 @@
-paramiko>=3.4.0
+# Core dependencies for API-based VM autoscaler
 requests>=2.31.0
 PyYAML>=6.0.1
-cryptography>=41.0.0
 pydantic>=2.5.0
 python-dotenv>=1.0.0
+urllib3>=1.26.0
+
+# Optional dependencies for backward compatibility (SSH-based version)
+# paramiko>=3.4.0
+# cryptography>=41.0.0

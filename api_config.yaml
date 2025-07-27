@@ -1,5 +1,6 @@
-# Secure Configuration file for vm_autoscale
-# Uses environment variables for sensitive data
+# API-based Configuration file for vm_autoscale
+# Uses native Proxmox API instead of SSH commands
+# Environment variables for sensitive data
 
 # Global thresholds for scaling VMs
 scaling_thresholds:
@@ -21,21 +22,43 @@ scaling_limits:
 check_interval: 300      # How often to check VM stats and take action if needed
 scale_cooldown: 300      # Cooldown between scaling operations for the same VM
 
-# List of Proxmox hosts to manage
+# List of Proxmox hosts to manage via API
 proxmox_hosts:
+  # Example with username/password authentication
   - name: host1
     host: 192.168.1.10
-    ssh_user: root
-    ssh_password: ${PROXMOX_HOST1_SSH_PASSWORD}  # From environment variable
-    # ssh_key: /path/to/ssh_key                     # Optional: use key-based auth instead
-    ssh_port: 22                                  # SSH Port (default 22)
+    api_port: 8006                                    # Proxmox API port (default 8006)
+    api_username: root@pam                           # API username with realm
+    api_password: ${PROXMOX_HOST1_API_PASSWORD}      # From environment variable
+    verify_ssl: true                                 # Verify SSL certificates
+    # ca_cert_path: /path/to/ca.crt                  # Optional: custom CA certificate
+    node_name: proxmox-node1                         # Specific node name (for single node)
+    auto_discover_nodes: false                       # Auto-discover cluster nodes
+    timeout: 30                                      # API request timeout
+    max_retries: 3                                   # Maximum retry attempts
 
+  # Example with API token authentication
   - name: host2
     host: 192.168.1.11
-    ssh_user: root
-    ssh_password: ${PROXMOX_HOST2_SSH_PASSWORD}  # From environment variable
-    # ssh_key: /path/to/ssh_key                     # Optional: use key-based auth instead
-    ssh_port: 22
+    api_port: 8006
+    api_token_id: ${PROXMOX_HOST2_API_TOKEN_ID}      # From environment variable
+    api_token_secret: ${PROXMOX_HOST2_API_TOKEN_SECRET}  # From environment variable
+    verify_ssl: true
+    node_name: proxmox-node2
+    auto_discover_nodes: false
+    timeout: 30
+    max_retries: 3
+
+  # Example cluster configuration with auto-discovery
+  - name: cluster1
+    host: 192.168.1.20                              # Any cluster node IP
+    api_port: 8006
+    api_username: root@pam
+    api_password: ${PROXMOX_CLUSTER_API_PASSWORD}
+    verify_ssl: false                               # Allow self-signed certificates
+    auto_discover_nodes: true                       # Auto-discover all cluster nodes
+    timeout: 45                                     # Longer timeout for cluster operations
+    max_retries: 5
 
 # Virtual machines to be monitored and scaled
 virtual_machines:
@@ -51,10 +74,16 @@ virtual_machines:
     cpu_scaling: true
     ram_scaling: true
 
+  - vm_id: 201
+    proxmox_host: cluster1
+    scaling_enabled: true
+    cpu_scaling: true
+    ram_scaling: false   # Only CPU scaling for this VM
+
 # Logging configuration
 logging:
   level: INFO                         # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-  log_file: /var/log/vm_autoscale.log # Path to the log file
+  log_file: /var/log/vm_autoscale_api.log # Path to the log file
 
 # Email alerts configuration (Optional)
 alerts:
